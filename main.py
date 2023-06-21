@@ -8,16 +8,12 @@ from twitch import TwitchData
 
 
 
-def darker(var):
-    c = QColor(var)
-    if var == FONT_COLOR:
-        i = 120
-    else:
-        i = 80
+def darker():
+    c = QColor(FONT_COLOR)
     if c.value() > 120:
-        return QColor().fromHsv(c.hue(),c.saturation(),c.value() - i).name()
+        return QColor().fromHsv(c.hue(),c.saturation(),c.value() - 120).name()
     else:
-        return QColor().fromHsv(c.hue(),c.saturation(),c.value() + i).name()
+        return QColor().fromHsv(c.hue(),c.saturation(),c.value() + 120).name()
 
 
 BLOCK_WIDTH = 330
@@ -27,13 +23,11 @@ FONT_SIZE = 14
 BTN_SIZE = 25
 ICON_SIZE = 16
 
-FONT_COLOR = "#e0e0e0"
-BACKGROUND_COLOR = "#141414"
-BLOCK_COLOR = "#1c1c1c"
-ICON_COLOR = "#cfcfcf"
+FONT_COLOR = "#d6d6d6"
+BACKGROUND_COLOR = "#121212"
+BLOCK_COLOR = "#171717"
 
-ICON_DARKER = darker(ICON_COLOR)
-FONT_DARKER = darker(FONT_COLOR)
+FONT_DARKER = darker()
 
 
 def openData():
@@ -238,7 +232,7 @@ class FlowLayout(QLayout):
 
     def doLayout(self, rect):
         margin = 12
-        y = rect.y() + margin
+        y = rect.y()
         x = height = 0 
         gap = - margin
 
@@ -345,7 +339,7 @@ class ProfileBlock(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget, QToolTip{font-family: Gantari; color: "+FONT_COLOR+"; font-size: "+str(FONT_SIZE)+"px; border: 0px solid red; background-color: "+BLOCK_COLOR+";}QLabel#title, QLabel#game, QLabel#viewers{color: "+FONT_DARKER+"; font-size: 12px;}")
+        self.setStyleSheet("QWidget, QToolTip{font-family: Outfit; color: "+FONT_COLOR+"; font-size: "+str(FONT_SIZE)+"px; border: 0px solid red; background-color: "+BLOCK_COLOR+";}QLabel#title, QLabel#game, QLabel#viewers{color: "+FONT_DARKER+"; font-size: 12px;}")
 
 
     # def mouseReleaseEvent(self, e):
@@ -389,7 +383,7 @@ class Dashboard(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget{background-color: "+BACKGROUND_COLOR+";}QLabel{font-family: Gantari; font-size: 12px; color: "+FONT_COLOR+";}")
+        self.setStyleSheet("QWidget{background-color: "+BACKGROUND_COLOR+";}QLabel{font-family: Outfit; font-size: 12px; color: "+FONT_COLOR+";}")
 
 
     def refresh(self, e):
@@ -441,7 +435,7 @@ class Main(QWidget):
         global twitch
         twitch = TwitchData()
         self.reversed = False
-        QFontDatabase().addApplicationFont("resource/Gantari-Regular.ttf")
+        QFontDatabase().addApplicationFont("resource/Outfit-Regular.ttf")
         QFontDatabase().addApplicationFont("resource/lbicons.ttf")
 
         wrapGrid = QGridLayout()
@@ -478,7 +472,7 @@ class Main(QWidget):
         self.thread.finished.connect(self.generateBlocks)
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+ICON_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border: none; background-color: "+BACKGROUND_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+ICON_DARKER+"}QLabel#label, QLineEdit{font-family: Gantari;}")
+        self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+FONT_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border: none; background-color: "+BACKGROUND_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+FONT_DARKER+"}QLabel#label, QLineEdit{font-family: Outfit;}")
 
     def setWindowGeometry(self):
         try:
@@ -517,8 +511,8 @@ class Main(QWidget):
 
 if __name__ == "__main__":
     app = QApplication([])
-    # app.setWindowIcon(QIcon("resource/icon.ico"))
-    # ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('app')
+    app.setWindowIcon(QIcon("resource/logo.png"))
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('app')
     main = Main()
     main.show()
     sys.exit(app.exec())
