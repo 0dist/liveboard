@@ -1,9 +1,9 @@
 
-from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QHBoxLayout, QLineEdit, QShortcut, QScrollArea, QLayout, QMessageBox, QToolTip
-from PyQt5.QtCore import Qt, QSize, QRect, QUrl, QPoint, QThread, QByteArray
+from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QHBoxLayout, QLineEdit, QShortcut, QScrollArea, QLayout, QMessageBox, QToolTip, QCompleter, QGraphicsDropShadowEffect, QTreeView 
+from PyQt5.QtCore import Qt, QSize, QRect, QUrl, QPoint, QThread, QByteArray, QTimer, QStringListModel
 from PyQt5.QtGui import QKeyEvent, QKeySequence, QColor, QFontDatabase, QSyntaxHighlighter, QIcon, QPixmap, QDesktopServices
 
-import sys, ctypes, json
+import sys, ctypes, json, time, threading
 from twitch import TwitchData
 
 
@@ -21,13 +21,14 @@ BLOCK_HEIGHT = 70
 
 FONT_SIZE = 14
 BTN_SIZE = 25
-ICON_SIZE = 16
+ICON_SIZE = 11
 
 FONT_COLOR = "#d6d6d6"
 BACKGROUND_COLOR = "#121212"
 BLOCK_COLOR = "#171717"
 
 FONT_DARKER = darker()
+FONT_FAMILY = "Outfit"
 
 
 def openData():
@@ -44,6 +45,7 @@ def saveData():
 try:
     openData()
 except:
+
     saveData()
     openData()
 
@@ -60,7 +62,7 @@ except:
 
 
 class ManagerBlock(QWidget):
-    def __init__(self, channel):
+    def __init__(self, channel, parent):
         super().__init__()
         self.setAttribute(Qt.WA_StyledBackground)
 
@@ -72,20 +74,21 @@ class ManagerBlock(QWidget):
         wrap.addStretch(1)
         remove = QPushButton("\uE006")
         remove.setObjectName("icon")
-        remove.mouseReleaseEvent = lambda e: self.removeChannel(e, remove)
+        remove.mouseReleaseEvent = lambda e: self.removeChannel(e, remove, parent)
         wrap.addWidget(remove)
 
         self.setLayout(wrap)
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget{font-size: "+str(FONT_SIZE)+"px; background-color: "+BLOCK_COLOR+";}QLabel{margin-left: 5px; color: "+FONT_COLOR+";}QPushButton#icon{font-size: 12px;}")
+        self.setStyleSheet("QWidget{font-size: "+str(FONT_SIZE)+"px; background-color: "+BLOCK_COLOR+"; border-radius: 3px;}QLabel{margin-left: 5px; color: "+FONT_COLOR+";}QPushButton#icon{font-size: "+str(ICON_SIZE)+"px;}")
 
 
-    def removeChannel(self, e, w):
+    def removeChannel(self, e, w, parent):
         if app.widgetAt(e.globalPos()) == w:
             DATA["channelList"].remove(self.channel.text())
             self.deleteLater()
+            parent.updateCompleter()
 
 
 
@@ -93,7 +96,15 @@ class ManagerBlock(QWidget):
 
 
 
+class Completer(QTreeView):
+    def __init__(self):
+        super().__init__()
+        self.setHeaderHidden(True)
+        self.setIndentation(-1)
+        self.setStyleSheet("QTreeView{padding-left: 10px; font-family: "+FONT_FAMILY+"; font-size: "+str(FONT_SIZE)+"px; border: none; color: "+FONT_COLOR+"; background-color: "+BACKGROUND_COLOR+"; selection-background-color: "+BLOCK_COLOR+"; selection-color: "+FONT_COLOR+"; outline: none;}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}")
 
+
+ 
 
 
 class ChannelManager(QWidget):
@@ -111,16 +122,24 @@ class ChannelManager(QWidget):
 
         centerLayout = QVBoxLayout()
         centerLayout.setSpacing(0)
-        centerLayout.setContentsMargins(15,15,15,15)
+        centerLayout.setContentsMargins(12,12,12,12)
         topRow = QHBoxLayout()
         topRow.addStretch(1)
-        topRow.setContentsMargins(0,0,0,15)
+        topRow.setContentsMargins(0,0,0,12)
+
 
         self.input = QLineEdit()
         self.input.setPlaceholderText("Enter channel name")
+        self.completer = QCompleter(DATA["channelList"])
+        self.completer.setPopup(Completer())
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.completer.activated.connect(lambda t: self.scrollToWidget(t, scroll))
+        self.input.setCompleter(self.completer)
+
         add = QPushButton("\uE004")
         add.clicked.connect(self.addChannel)
         self.input.returnPressed.connect(add.click)
+
         deleteAll = QPushButton("\uE005")
         deleteAll.clicked.connect(self.clearChannelList)
 
@@ -137,7 +156,7 @@ class ChannelManager(QWidget):
         scrollArea.setLayout(self.container)
 
         for i in DATA["channelList"]:
-            self.container.addWidget(ManagerBlock(i))
+            self.container.addWidget(ManagerBlock(i, self))
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -152,16 +171,41 @@ class ChannelManager(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget#main{background-color: rgba(0,0,0, 0.8);}QWidget#center, QWidget#scroll{background-color: "+BACKGROUND_COLOR+";}QLineEdit{font-size: "+str(FONT_SIZE)+"px; border: none; color: "+FONT_COLOR+"; background-color: "+BACKGROUND_COLOR+"; height: "+str(BTN_SIZE)+"px; width: "+str(BTN_SIZE * 6)+"px;}")
+        self.setStyleSheet("QWidget#main{background-color: rgba(0,0,0, 0.8)}QWidget#center{border-radius: 3px;}QWidget#center, QWidget#scroll{background-color: "+BACKGROUND_COLOR+";}QLineEdit{padding-left: 10px; font-size: "+str(FONT_SIZE)+"px; border:none; color: "+FONT_COLOR+"; background-color: "+BACKGROUND_COLOR+"; height: "+str(BTN_SIZE)+"px; width: "+str(BTN_SIZE * 6)+"px;}")
+
+
+    def scrollToWidget(self, text, scroll):
+        for i in self.container.itemList:
+            if i.widget().findChild(QLabel).text() == text:
+
+                scroll.verticalScrollBar().setValue(i.geometry().y() - scroll.height() + i.geometry().height() + int(scroll.height() / 2))
+                t = threading.Thread(target = self.revealBlock, args = [i.widget()])
+                t.start()
+                break
+
+
+    def revealBlock(self, w):
+        e = QGraphicsDropShadowEffect()
+        e.setOffset(0)
+        e.setBlurRadius(20)
+        e.setColor(QColor(FONT_COLOR))
+        w.setGraphicsEffect(e)
+
+        time.sleep(1.5)
+        try:
+            w.setGraphicsEffect(None)
+        except:
+            pass
 
 
     def addChannel(self, e):
         text = self.input.text()
         if text:
             if not text.lower() in (c.lower() for c in DATA["channelList"]):
-                self.container.addWidget(ManagerBlock(text))
+                self.container.addWidget(ManagerBlock(text, self))
                 self.input.clear()
                 DATA["channelList"].append(text)
+                self.updateCompleter()
 
 
     def clearChannelList(self, e):
@@ -173,6 +217,10 @@ class ChannelManager(QWidget):
             for i in range(self.container.count()):
                 self.container.itemAt(i).widget().deleteLater()
             DATA["channelList"] = []
+            self.updateCompleter()
+
+    def updateCompleter(self):
+        self.completer.setModel(QStringListModel(DATA["channelList"]))
 
 
     def mouseReleaseEvent(self, e):
@@ -339,7 +387,7 @@ class ProfileBlock(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget, QToolTip{font-family: Outfit; color: "+FONT_COLOR+"; font-size: "+str(FONT_SIZE)+"px; border: 0px solid red; background-color: "+BLOCK_COLOR+";}QLabel#title, QLabel#game, QLabel#viewers{color: "+FONT_DARKER+"; font-size: 12px;}")
+        self.setStyleSheet("QWidget, QToolTip{font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+"; font-size: "+str(FONT_SIZE)+"px; border: 0px solid red; background-color: "+BLOCK_COLOR+";}QLabel#title, QLabel#game, QLabel#viewers{color: "+FONT_DARKER+"; font-size: 12px;}")
 
 
     # def mouseReleaseEvent(self, e):
@@ -361,7 +409,7 @@ class Dashboard(QWidget):
     def __init__(self):
         super().__init__()
         global progress
-        self.setFixedHeight(int(BTN_SIZE * 1.3))
+        self.setFixedHeight(int(BTN_SIZE * 1.5))
         self.setAttribute(Qt.WA_StyledBackground)
 
         buttonWrap = QHBoxLayout()
@@ -383,7 +431,7 @@ class Dashboard(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget{background-color: "+BACKGROUND_COLOR+";}QLabel{font-family: Outfit; font-size: 12px; color: "+FONT_COLOR+";}")
+        self.setStyleSheet("QWidget{background-color: "+BACKGROUND_COLOR+";}QLabel{font-family: "+FONT_FAMILY+"; font-size: 12px; color: "+FONT_COLOR+";}QPushButton#icon{background-color: "+BLOCK_COLOR+";}")
 
 
     def refresh(self, e):
@@ -472,7 +520,7 @@ class Main(QWidget):
         self.thread.finished.connect(self.generateBlocks)
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+FONT_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border: none; background-color: "+BACKGROUND_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+FONT_DARKER+"}QLabel#label, QLineEdit{font-family: Outfit;}")
+        self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+FONT_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border-radius: 3px; background-color: "+BLOCK_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+FONT_DARKER+"}QLabel#label, QLineEdit{font-family: "+FONT_FAMILY+";}")
 
     def setWindowGeometry(self):
         try:
