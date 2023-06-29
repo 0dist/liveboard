@@ -1,9 +1,9 @@
 
-from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QHBoxLayout, QLineEdit, QShortcut, QScrollArea, QLayout, QMessageBox, QToolTip, QCompleter, QGraphicsDropShadowEffect, QTreeView 
-from PyQt5.QtCore import Qt, QSize, QRect, QUrl, QPoint, QThread, QByteArray, QTimer, QStringListModel
+from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QHBoxLayout, QLineEdit, QShortcut, QScrollArea, QLayout, QMessageBox, QToolTip, QCompleter, QGraphicsDropShadowEffect, QTreeView
+from PyQt5.QtCore import Qt, QSize, QRect, QUrl, QThread, QByteArray, QStringListModel, QEvent
 from PyQt5.QtGui import QKeyEvent, QKeySequence, QColor, QFontDatabase, QSyntaxHighlighter, QIcon, QPixmap, QDesktopServices
 
-import sys, ctypes, json, time, threading
+import sys, ctypes, json, time, threading, requests, os
 from twitch import TwitchData
 
 
@@ -67,7 +67,9 @@ class ManagerBlock(QWidget):
         self.setAttribute(Qt.WA_StyledBackground)
 
         wrap = QHBoxLayout()
+        wrap.setSpacing(0)
         wrap.setContentsMargins(0,0,0,0)
+        
         self.channel = QLabel(str(channel))
         self.channel.setObjectName("label")
         wrap.addWidget(self.channel)
@@ -81,12 +83,12 @@ class ManagerBlock(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget{font-size: "+str(FONT_SIZE)+"px; background-color: "+BLOCK_COLOR+"; border-radius: 3px;}QLabel{margin-left: 5px; color: "+FONT_COLOR+";}QPushButton#icon{font-size: "+str(ICON_SIZE)+"px;}")
-
+        self.setStyleSheet("QWidget{background-color: "+BLOCK_COLOR+"; border-radius: 3px;}")
 
     def removeChannel(self, e, w, parent):
         if app.widgetAt(e.globalPos()) == w:
             DATA["channelList"].remove(self.channel.text())
+            parent.container.removeWidget(self)
             self.deleteLater()
             parent.updateCompleter()
 
@@ -124,12 +126,11 @@ class ChannelManager(QWidget):
         centerLayout.setSpacing(0)
         centerLayout.setContentsMargins(12,12,12,12)
         topRow = QHBoxLayout()
-        topRow.addStretch(1)
-        topRow.setContentsMargins(0,0,0,12)
+        # left margin is temporary and static
+        topRow.setContentsMargins(140,0,0,12)
 
 
-        self.input = QLineEdit()
-        self.input.setPlaceholderText("Enter channel name")
+        self.input = QLineEdit(placeholderText = "Enter streamer name")
         self.completer = QCompleter(DATA["channelList"])
         self.completer.setPopup(Completer())
         self.completer.setCaseSensitivity(Qt.CaseInsensitive)
@@ -140,14 +141,17 @@ class ChannelManager(QWidget):
         add.clicked.connect(self.addChannel)
         self.input.returnPressed.connect(add.click)
 
+        self.channelCount = QLabel(str(len(DATA["channelList"])))
+        self.channelCount.setObjectName("count")
         deleteAll = QPushButton("\uE005")
         deleteAll.clicked.connect(self.clearChannelList)
 
-        for i in [self.input, add, deleteAll]:
-            if i == deleteAll:
+        for i in [self.input, add, self.channelCount, deleteAll]:
+            if i == self.channelCount:
                 topRow.addStretch(1)
+            if i in [add, deleteAll]:
+                i.setObjectName("icon")
             topRow.addWidget(i)
-            i.setObjectName("icon")
 
 
         scrollArea = QWidget()
@@ -171,7 +175,8 @@ class ChannelManager(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget#main{background-color: rgba(0,0,0, 0.8)}QWidget#center{border-radius: 3px;}QWidget#center, QWidget#scroll{background-color: "+BACKGROUND_COLOR+";}QLineEdit{padding-left: 10px; font-size: "+str(FONT_SIZE)+"px; border:none; color: "+FONT_COLOR+"; background-color: "+BACKGROUND_COLOR+"; height: "+str(BTN_SIZE)+"px; width: "+str(BTN_SIZE * 6)+"px;}")
+        self.setStyleSheet("QWidget#main{background-color: rgba(0,0,0, 0.8)}QWidget#center{border-radius: 3px;}QWidget#center, QWidget#scroll{background-color: "+BACKGROUND_COLOR+";}QLineEdit{font-family: "+FONT_FAMILY+";padding-left: 10px; font-size: "+str(FONT_SIZE)+"px; border: none; color: "+FONT_COLOR+"; background-color: "+BACKGROUND_COLOR+"; height: "+str(BTN_SIZE)+"px; width: "+str(BTN_SIZE * 6)+"px;}")
+
 
 
     def scrollToWidget(self, text, scroll):
@@ -211,7 +216,7 @@ class ChannelManager(QWidget):
     def clearChannelList(self, e):
         m = QMessageBox()
         m.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
-        q = m.question(self, "Clear the channel list?", "Are you sure you want to clear the channel list?", m.Yes | m.No)
+        q = m.question(self, "Clear the streamer list?", "Are you sure you want to clear the streamer list?", m.Yes | m.No)
 
         if q == m.Yes:
             for i in range(self.container.count()):
@@ -221,6 +226,7 @@ class ChannelManager(QWidget):
 
     def updateCompleter(self):
         self.completer.setModel(QStringListModel(DATA["channelList"]))
+        self.channelCount.setText(str(len(DATA["channelList"])))
 
 
     def mouseReleaseEvent(self, e):
@@ -335,15 +341,46 @@ class FlowLayout(QLayout):
 
 
 
+class StreamPreview(QWidget): 
+    def __init__(self, login):
+        super().__init__()
+        self.setAttribute(Qt.WA_StyledBackground)
+        self.login = login
+        self.path = ""+self.login+"-preview.jpg"
+
+        self.centerWrap = QHBoxLayout()
+        self.setLayout(self.centerWrap)
+
+        self.thread = TwitchThread(self)
+        self.thread.start()
+        self.thread.finished.connect(self.showPreview)
+        self.setStyleSheet("background-color: rgba(0,0,0, 0.8)")
+
+    def showPreview(self):
+        img = QLabel()
+        img.setFixedSize(854, 480)
+        img.setPixmap(QPixmap(self.path))
+        self.centerWrap.addWidget(img, Qt.AlignCenter)
+
+
+    def mouseReleaseEvent(self, e):
+        if app.widgetAt(e.globalPos()) == self:
+            self.deleteLater()
+            try:
+                os.remove(self.path)
+            except:
+                pass
 
 
 
-class ProfileBlock(QWidget): 
-    def __init__(self, channel, title, game, viewers):
+
+class ProfileBlock(QWidget):
+    def __init__(self, login, channel, title, game, viewers):
         super().__init__()
         self.setAttribute(Qt.WA_StyledBackground)
         self.setFixedSize(BLOCK_WIDTH, BLOCK_HEIGHT)
-        self.channel = channel
+        self.login = login
+        self.mouseReleaseEvent = self.showPreview
 
         wrap = QHBoxLayout()
         textWrap = QVBoxLayout()
@@ -355,12 +392,13 @@ class ProfileBlock(QWidget):
         img.setFixedSize(BLOCK_HEIGHT, BLOCK_HEIGHT)
         img.setObjectName("img")
         img.setPixmap(QPixmap("images/"+channel+".png").scaled(BLOCK_HEIGHT, BLOCK_HEIGHT, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        img.mouseReleaseEvent = self.openBrowser
         wrap.addWidget(img)
 
         topText = QHBoxLayout()
-        channel = QLabel(channel)
-        channel.setObjectName("channel")
-        topText.addWidget(channel, Qt.AlignLeft)
+        topText.addWidget(QLabel(channel))
+        topText.addStretch(1)
+
         viewers = QLabel(viewers)
         viewers.setObjectName("viewers")
         topText.addWidget(viewers)
@@ -387,15 +425,21 @@ class ProfileBlock(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget, QToolTip{font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+"; font-size: "+str(FONT_SIZE)+"px; border: 0px solid red; background-color: "+BLOCK_COLOR+";}QLabel#title, QLabel#game, QLabel#viewers{color: "+FONT_DARKER+"; font-size: 12px;}")
+        self.setStyleSheet("QWidget, QToolTip{font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+"; font-size: "+str(FONT_SIZE)+"px; border: 0px solid red; background-color: "+BLOCK_COLOR+";}QLabel#title, QLabel#game, QLabel#viewers{color: "+FONT_DARKER+"; font-size: 12px;}QPushButton{font-family: lbicons; color: "+BLOCK_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border-radius: 3px; margin-left: 5px;}")
 
 
-    # def mouseReleaseEvent(self, e):
-    #     super().mouseReleaseEvent(e)
-    #     try:
-    #         QDesktopServices.openUrl(QUrl("https://twitch.tv/"+self.channel+""))
-    #     except:
-    #         pass
+    def showPreview(self, e):
+        w = app.widgetAt(e.globalPos())
+        if w.parent() == self or w == self:
+            main.wrapGrid.addWidget(StreamPreview(self.login), 0, 0)
+
+    def openBrowser(self, e):
+        try:
+            w = app.widgetAt(e.globalPos())
+            if w.parent() == self or w == self:
+                QDesktopServices.openUrl(QUrl("https://twitch.tv/"+self.login+""))
+        except:
+            pass
 
 
 
@@ -418,10 +462,13 @@ class Dashboard(QWidget):
         buttonWrap.addStretch(1)
 
         self.managerBtn = QPushButton("\uE001")
-        btns = [progress := QLabel(), QPushButton("\uE000"), self.managerBtn, QPushButton("\uE002")]
+        progress = QLabel()
+        progress.setObjectName("count")
+        btns = [progress, QPushButton("\uE000"), self.managerBtn, QPushButton("\uE002")]
         for i in btns:
             buttonWrap.addWidget(i)
-            i.setObjectName("icon")
+            if i is not progress:
+                i.setObjectName("icon")
 
         btns[1].clicked.connect(self.refresh)
         self.managerBtn.mouseReleaseEvent = self.showManager
@@ -431,7 +478,7 @@ class Dashboard(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget{background-color: "+BACKGROUND_COLOR+";}QLabel{font-family: "+FONT_FAMILY+"; font-size: 12px; color: "+FONT_COLOR+";}QPushButton#icon{background-color: "+BLOCK_COLOR+";}")
+        self.setStyleSheet("QWidget{background-color: "+BACKGROUND_COLOR+";}QPushButton#icon{background-color: "+BLOCK_COLOR+";}")
 
 
     def refresh(self, e):
@@ -470,10 +517,17 @@ class TwitchThread(QThread):
 
     def run(self):
         try:
-            twitch.getData(DATA["channelList"], progress)
+            if not hasattr(self.parent, "login"):
+                twitch.getData(DATA["channelList"], progress)
+            else:
+                with open(self.parent.path, "wb") as f:
+                    f.write(requests.get("https://static-cdn.jtvnw.net/previews-ttv/live_user_"+self.parent.login+"-854x480.jpg").content)
         except:
             pass
-        self.parent.sortBlocks()
+        if not hasattr(self.parent, "login"):
+            self.parent.sortBlocks()
+            progress.setText("")
+
 
 
 
@@ -486,10 +540,10 @@ class Main(QWidget):
         QFontDatabase().addApplicationFont("resource/Outfit-Regular.ttf")
         QFontDatabase().addApplicationFont("resource/lbicons.ttf")
 
-        wrapGrid = QGridLayout()
+        self.wrapGrid = QGridLayout()
         base = QVBoxLayout()
         base.setSpacing(0)
-        for i in [wrapGrid, base]:
+        for i in [self.wrapGrid, base]:
             i.setContentsMargins(0,0,0,0)
 
 
@@ -507,10 +561,10 @@ class Main(QWidget):
         base.addWidget(scroll)
 
 
-        wrapGrid.addLayout(base, 0, 0)
+        self.wrapGrid.addLayout(base, 0, 0)
         self.manager = ChannelManager()
-        wrapGrid.addWidget(self.manager, 0, 0)
-        self.setLayout(wrapGrid)
+        self.wrapGrid.addWidget(self.manager, 0, 0)
+        self.setLayout(self.wrapGrid)
         self.updateStylesheet()
         self.setWindowGeometry()
 
@@ -518,9 +572,10 @@ class Main(QWidget):
         self.thread = TwitchThread(self)
         self.thread.start()
         self.thread.finished.connect(self.generateBlocks)
+        # self.generateBlocks()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+FONT_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border-radius: 3px; background-color: "+BLOCK_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+FONT_DARKER+"}QLabel#label, QLineEdit{font-family: "+FONT_FAMILY+";}")
+        self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+FONT_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border-radius: 3px; background-color: "+BLOCK_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+FONT_DARKER+"}QLabel#label, QLabel#count{margin-left: 5px; font-size: "+str(FONT_SIZE)+"px; font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+";}QLabel#count{font-size: "+str(FONT_SIZE - 2)+"px; margin-right: 3px;}")
 
     def setWindowGeometry(self):
         try:
@@ -538,15 +593,17 @@ class Main(QWidget):
             self.profileGrid.itemAt(i).widget().deleteLater()
 
         for i in twitch.liveChannels:
-            self.profileGrid.addWidget(ProfileBlock(i["channel"], i["title"], i["game"], str(format(i["viewers"], ",d").replace(",", "."))))
-        progress.setText("")
+            self.profileGrid.addWidget(ProfileBlock(i["login"], i["channel"], i["title"], i["game"], str(format(i["viewers"], ",d").replace(",", "."))))
 
 
     def closeEvent(self, e):
         DATA["windowGeometry"] = bytearray(self.saveGeometry().toBase64()).decode("utf-8")
-
         with open("data.json", "w") as f:
             json.dump(DATA, f)
+        # temporary
+        for img in os.listdir("."):
+            if img.endswith("-preview.jpg"):
+                os.remove(img)
 
 
 

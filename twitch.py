@@ -23,26 +23,27 @@ class TwitchData():
                 r = future.result().text
 
                 if not any(i in r for i in ["userDoesNotExist", 'stream":null']):
+                    login = re.search('login":"(.*?)",', r).group(1)
                     channel = re.search('Name":"(.*?)",', r).group(1)
                     viewers = int(re.search('viewersCount":(\d*)', r).group(1))
                     title = re.search('title":"(.*?)","', r).group(1)
                     game = re.search('"name":"(.*?)",', r)
                     game = game.group(1) if game else ""
 
-                    self.liveChannels.append({"channel": channel, "title": title, "viewers": viewers, "game": game})
-  
+                    self.liveChannels.append({"login": login, "channel": channel, "title": title, "viewers": viewers, "game": game})
+
 
                     if not os.path.exists("images"):
                         os.makedirs("images")
-                    if not os.path.exists("images/"+channel+".png"):
-                        self.getImage(r, channel)
-                    elif os.path.getsize("images/"+channel+".png") == 0:
-                        self.getImage(r, channel)
+                    if not os.path.exists("images/"+login+".png"):
+                        self.getImage(r, login)
+                    elif os.path.getsize("images/"+login+".png") == 0:
+                        self.getImage(r, login)
 
 
-    def getImage(self, r, channel):
+    def getImage(self, r, login):
         try:
-            with open("images/"+channel+".png", "wb") as f:
+            with open("images/"+login+".png", "wb") as f:
                 f.write(requests.get(re.search('profileImageURL":"(.*?)","', r).group(1)).content)
         except:
             pass
