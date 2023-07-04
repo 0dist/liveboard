@@ -1,7 +1,7 @@
 
-from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QHBoxLayout, QLineEdit, QShortcut, QScrollArea, QLayout, QMessageBox, QToolTip, QCompleter, QGraphicsDropShadowEffect, QTreeView
+from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QHBoxLayout, QLineEdit, QShortcut, QScrollArea, QLayout, QMessageBox, QToolTip, QCompleter, QGraphicsDropShadowEffect, QTreeView, QShortcut
 from PyQt5.QtCore import Qt, QSize, QRect, QUrl, QThread, QByteArray, QStringListModel, QEvent
-from PyQt5.QtGui import QKeyEvent, QKeySequence, QColor, QFontDatabase, QSyntaxHighlighter, QIcon, QPixmap, QDesktopServices
+from PyQt5.QtGui import QKeyEvent, QKeySequence, QColor, QFontDatabase, QSyntaxHighlighter, QIcon, QPixmap, QDesktopServices, QKeySequence
 
 import sys, ctypes, json, time, threading, requests, os
 from twitch import TwitchData
@@ -45,7 +45,6 @@ def saveData():
 try:
     openData()
 except:
-
     saveData()
     openData()
 
@@ -69,7 +68,7 @@ class ManagerBlock(QWidget):
         wrap = QHBoxLayout()
         wrap.setSpacing(0)
         wrap.setContentsMargins(0,0,0,0)
-        
+
         self.channel = QLabel(str(channel))
         self.channel.setObjectName("label")
         wrap.addWidget(self.channel)
@@ -90,7 +89,7 @@ class ManagerBlock(QWidget):
             DATA["channelList"].remove(self.channel.text())
             parent.container.removeWidget(self)
             self.deleteLater()
-            parent.updateCompleter()
+            parent.updateChannels()
 
 
 
@@ -210,7 +209,7 @@ class ChannelManager(QWidget):
                 self.container.addWidget(ManagerBlock(text, self))
                 self.input.clear()
                 DATA["channelList"].append(text)
-                self.updateCompleter()
+                self.updateChannels()
 
 
     def clearChannelList(self, e):
@@ -222,11 +221,12 @@ class ChannelManager(QWidget):
             for i in range(self.container.count()):
                 self.container.itemAt(i).widget().deleteLater()
             DATA["channelList"] = []
-            self.updateCompleter()
+            self.updateChannels()
 
-    def updateCompleter(self):
+    def updateChannels(self):
         self.completer.setModel(QStringListModel(DATA["channelList"]))
         self.channelCount.setText(str(len(DATA["channelList"])))
+        main.saveData()
 
 
     def mouseReleaseEvent(self, e):
@@ -391,8 +391,8 @@ class ProfileBlock(QWidget):
         img = QLabel()
         img.setFixedSize(BLOCK_HEIGHT, BLOCK_HEIGHT)
         img.setObjectName("img")
-        img.setPixmap(QPixmap("images/"+channel+".png").scaled(BLOCK_HEIGHT, BLOCK_HEIGHT, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        img.mouseReleaseEvent = self.openBrowser
+        img.setPixmap(QPixmap("images/"+login+".png").scaled(BLOCK_HEIGHT, BLOCK_HEIGHT, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        img.mouseReleaseEvent = self.openInBrowser
         wrap.addWidget(img)
 
         topText = QHBoxLayout()
@@ -425,7 +425,7 @@ class ProfileBlock(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget, QToolTip{font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+"; font-size: "+str(FONT_SIZE)+"px; border: 0px solid red; background-color: "+BLOCK_COLOR+";}QLabel#title, QLabel#game, QLabel#viewers{color: "+FONT_DARKER+"; font-size: 12px;}QPushButton{font-family: lbicons; color: "+BLOCK_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border-radius: 3px; margin-left: 5px;}")
+        self.setStyleSheet("QWidget, QToolTip{font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+"; font-size: "+str(FONT_SIZE)+"px; border: 0px solid red; background-color: "+BLOCK_COLOR+";}QLabel#title, QLabel#game, QLabel#viewers{color: "+FONT_DARKER+"; font-size: 12px;}")
 
 
     def showPreview(self, e):
@@ -433,7 +433,7 @@ class ProfileBlock(QWidget):
         if w.parent() == self or w == self:
             main.wrapGrid.addWidget(StreamPreview(self.login), 0, 0)
 
-    def openBrowser(self, e):
+    def openInBrowser(self, e):
         try:
             w = app.widgetAt(e.globalPos())
             if w.parent() == self or w == self:
@@ -470,7 +470,7 @@ class Dashboard(QWidget):
             if i is not progress:
                 i.setObjectName("icon")
 
-        btns[1].clicked.connect(self.refresh)
+        btns[1].clicked.connect(lambda: main.refreshBlocks())
         self.managerBtn.mouseReleaseEvent = self.showManager
         btns[3].clicked.connect(self.sort)
 
@@ -573,6 +573,7 @@ class Main(QWidget):
         self.thread.start()
         self.thread.finished.connect(self.generateBlocks)
         # self.generateBlocks()
+        QShortcut(QKeySequence("Ctrl+R"), self).activated.connect(self.refreshBlocks)
 
     def updateStylesheet(self):
         self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+FONT_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border-radius: 3px; background-color: "+BLOCK_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+FONT_DARKER+"}QLabel#label, QLabel#count{margin-left: 5px; font-size: "+str(FONT_SIZE)+"px; font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+";}QLabel#count{font-size: "+str(FONT_SIZE - 2)+"px; margin-right: 3px;}")
@@ -583,6 +584,10 @@ class Main(QWidget):
         except:
              self.resize(self.screen().availableGeometry().size() / 2)
 
+
+    def refreshBlocks(self):
+        self.reversed = False
+        self.thread.start()
 
     def sortBlocks(self):
         self.reversed = True if not self.reversed else False
@@ -596,10 +601,13 @@ class Main(QWidget):
             self.profileGrid.addWidget(ProfileBlock(i["login"], i["channel"], i["title"], i["game"], str(format(i["viewers"], ",d").replace(",", "."))))
 
 
-    def closeEvent(self, e):
-        DATA["windowGeometry"] = bytearray(self.saveGeometry().toBase64()).decode("utf-8")
+    def saveData(self):
         with open("data.json", "w") as f:
             json.dump(DATA, f)
+
+    def closeEvent(self, e):
+        DATA["windowGeometry"] = bytearray(self.saveGeometry().toBase64()).decode("utf-8")
+        self.saveData()
         # temporary
         for img in os.listdir("."):
             if img.endswith("-preview.jpg"):
