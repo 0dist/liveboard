@@ -494,8 +494,9 @@ class Dashboard(QWidget):
             main.profileGrid.itemAt(i).widget().deleteLater()
 
     def showManager(self, e):
-        self.managerBtn.clearFocus()
-        main.manager.show()
+        if app.widgetAt(e.globalPos()) == self.managerBtn:
+            self.managerBtn.clearFocus()
+            main.manager.show()
 
 
 
@@ -624,8 +625,8 @@ class Main(QWidget):
 
 if __name__ == "__main__":
     app = QApplication([])
-    app.setWindowIcon(QIcon("resource/logo.png"))
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('app')
+    app.setWindowIcon(QIcon("resource/logo.ico"))
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('app') if sys.platform == "win32" else None
     main = Main()
     main.show()
     sys.exit(app.exec())
