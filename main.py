@@ -1,10 +1,12 @@
 
-from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QHBoxLayout, QLineEdit, QShortcut, QScrollArea, QLayout, QMessageBox, QToolTip, QCompleter, QGraphicsDropShadowEffect, QTreeView, QShortcut
+from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QHBoxLayout, QLineEdit, QShortcut, QScrollArea, QLayout, QMessageBox, QToolTip, QCompleter, QGraphicsDropShadowEffect, QTreeView, QShortcut, QStackedWidget
 from PyQt5.QtCore import Qt, QSize, QRect, QUrl, QThread, QByteArray, QStringListModel, QEvent
 from PyQt5.QtGui import QKeyEvent, QKeySequence, QColor, QFontDatabase, QSyntaxHighlighter, QIcon, QPixmap, QDesktopServices, QKeySequence
 
 import sys, ctypes, json, time, threading, requests, os
+# sys.path.append("./platform")
 from twitch import TwitchData
+from youtube import YoutubeData
 
 
 
@@ -35,12 +37,14 @@ def openData():
     global DATA
     with open("data.json", "r") as file:
         DATA = json.load(file)
-    if not isinstance(DATA["channelList"], list):
-        DATA["channelList"] = []
+
+    for i in ["twitchList", "youtubeList"]:
+        if not isinstance(DATA[i], list):
+            DATA[i] = []
 
 def saveData():
     with open("data.json", "w") as file:
-        file.write('{"channelList": []}')
+        file.write('{"twitchList": [], "youtubeList": []}')
 
 try:
     openData()
@@ -82,14 +86,16 @@ class ManagerBlock(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget{background-color: "+BLOCK_COLOR+"; border-radius: 3px;}")
+        self.setStyleSheet("QWidget{background-color: "+BLOCK_COLOR+"; border-radius: 3px;}QLabel#label{margin-left: 5px;}")
 
     def removeChannel(self, e, w, parent):
         if app.widgetAt(e.globalPos()) == w:
-            DATA["channelList"].remove(self.channel.text())
-            parent.container.removeWidget(self)
+            data = parent.activeContainer[2]
+
+            DATA[data].remove(self.channel.text())
+            parent.activeContainer[0].removeWidget(self)
             self.deleteLater()
-            parent.updateChannels()
+            parent.updateChannels(data)
 
 
 
@@ -109,11 +115,12 @@ class Completer(QTreeView):
 
 
 class ChannelManager(QWidget):
-    def __init__(self):
+    def __init__(self, parent):
         super().__init__()
         self.hide()
         self.setAttribute(Qt.WA_StyledBackground)
         self.setObjectName("main")
+        self.parent = parent
 
         centerWrap = QHBoxLayout()
         centerWid = QWidget()
@@ -125,48 +132,43 @@ class ChannelManager(QWidget):
         centerLayout.setSpacing(0)
         centerLayout.setContentsMargins(12,12,12,12)
         topRow = QHBoxLayout()
-        # left margin is temporary and static
-        topRow.setContentsMargins(140,0,0,12)
+        topRow.setContentsMargins(0,0,0,12)
+        topRow.setSpacing(6)
 
 
-        self.input = QLineEdit(placeholderText = "Enter streamer name")
-        self.completer = QCompleter(DATA["channelList"])
+        self.input = QLineEdit()
+        self.completer = QCompleter()
         self.completer.setPopup(Completer())
         self.completer.setCaseSensitivity(Qt.CaseInsensitive)
-        self.completer.activated.connect(lambda t: self.scrollToWidget(t, scroll))
+        self.completer.activated.connect(self.scrollToWidget)
         self.input.setCompleter(self.completer)
 
         add = QPushButton("\uE004")
         add.clicked.connect(self.addChannel)
         self.input.returnPressed.connect(add.click)
 
-        self.channelCount = QLabel(str(len(DATA["channelList"])))
+        self.channelCount = QLabel()
         self.channelCount.setObjectName("count")
         deleteAll = QPushButton("\uE005")
         deleteAll.clicked.connect(self.clearChannelList)
 
-        for i in [self.input, add, self.channelCount, deleteAll]:
+        for i in [switchTwitch := QPushButton("\uE007"), switchYoutube := QPushButton("\uE008"), self.input, add, self.channelCount, deleteAll]:
             if i == self.channelCount:
                 topRow.addStretch(1)
-            if i in [add, deleteAll]:
+            if i in [switchTwitch, switchYoutube, add, deleteAll]:
                 i.setObjectName("icon")
             topRow.addWidget(i)
 
+        switchYoutube.clicked.connect(lambda: self.switchYoutube())
+        switchTwitch.clicked.connect(lambda: self.switchTwitch())
 
-        scrollArea = QWidget()
-        scrollArea.setObjectName("scroll")
-        self.container = FlowLayout(self)
-        scrollArea.setLayout(self.container)
 
-        for i in DATA["channelList"]:
-            self.container.addWidget(ManagerBlock(i, self))
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(scrollArea)
-
+        self.stackLayout = QStackedWidget()
+        self.initiateLayouts()
+        # set label data
+        self.switchTwitch()
         centerLayout.addLayout(topRow)
-        centerLayout.addWidget(scroll)
+        centerLayout.addWidget(self.stackLayout)
 
         centerWid.setLayout(centerLayout)
         centerWrap.addWidget(centerWid, Qt.AlignCenter)
@@ -174,12 +176,47 @@ class ChannelManager(QWidget):
         self.updateStylesheet()
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget#main{background-color: rgba(0,0,0, 0.8)}QWidget#center{border-radius: 3px;}QWidget#center, QWidget#scroll{background-color: "+BACKGROUND_COLOR+";}QLineEdit{font-family: "+FONT_FAMILY+";padding-left: 10px; font-size: "+str(FONT_SIZE)+"px; border: none; color: "+FONT_COLOR+"; background-color: "+BACKGROUND_COLOR+"; height: "+str(BTN_SIZE)+"px; width: "+str(BTN_SIZE * 6)+"px;}")
+        self.setStyleSheet("QWidget#main{background-color: rgba(0,0,0, 0.8)}QWidget#center{border-radius: 3px;}QWidget#center, QWidget#scroll{background-color: "+BACKGROUND_COLOR+";}QLineEdit{font-family: "+FONT_FAMILY+";padding-left: 10px; font-size: "+str(FONT_SIZE)+"px; border: none; color: "+FONT_COLOR+"; background-color: "+BACKGROUND_COLOR+"; height: "+str(BTN_SIZE)+"px; width: "+str(BTN_SIZE * 8)+"px}")
 
 
+    def initiateLayouts(self):
+        self.twitchContainer = [l := FlowLayout(self), self.containerLayout(l, "twitchList"), "twitchList", "Twitch"]
+        self.youtubeContainer = [l := FlowLayout(self), self.containerLayout(l, "youtubeList"), "youtubeList", "Youtube"]
 
-    def scrollToWidget(self, text, scroll):
-        for i in self.container.itemList:
+        for i in [self.twitchContainer[1], self.youtubeContainer[1]]:
+            self.stackLayout.addWidget(i)
+
+
+    def containerLayout(self, container, listData):
+        scrollArea = QWidget()
+        scrollArea.setObjectName("scroll")
+        scrollArea.setLayout(container)
+
+        for i in DATA[listData]:
+            container.addWidget(ManagerBlock(i, self))
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(scrollArea)
+        return scroll
+
+
+    def switchTwitch(self):
+        self.activeContainer = self.twitchContainer
+        self.stackLayout.setCurrentIndex(0)
+        self.input.setPlaceholderText(""+self.activeContainer[3]+" streamer name")
+        self.updateChannels(self.activeContainer[2])
+
+    def switchYoutube(self):
+        self.activeContainer = self.youtubeContainer
+        self.stackLayout.setCurrentIndex(1)
+        self.input.setPlaceholderText(""+self.activeContainer[3]+" handle name")
+        self.updateChannels(self.activeContainer[2])
+
+
+    def scrollToWidget(self, text):
+        scroll = self.activeContainer[1]
+        for i in self.activeContainer[0].itemList:
             if i.widget().findChild(QLabel).text() == text:
 
                 scroll.verticalScrollBar().setValue(i.geometry().y() - scroll.height() + i.geometry().height() + int(scroll.height() / 2))
@@ -204,29 +241,34 @@ class ChannelManager(QWidget):
 
     def addChannel(self, e):
         text = self.input.text()
+        data = self.activeContainer[2]
         if text:
-            if not text.lower() in (c.lower() for c in DATA["channelList"]):
-                self.container.addWidget(ManagerBlock(text, self))
+            if not text.lower() in (c.lower() for c in DATA[data]):
+                self.activeContainer[0].addWidget(ManagerBlock(text, self))
                 self.input.clear()
-                DATA["channelList"].append(text)
-                self.updateChannels()
+                DATA[data].append(text)
+                self.updateChannels(data)
 
 
     def clearChannelList(self, e):
+        widget = self.activeContainer[0]
+        data = self.activeContainer[2]
+        platform = self.activeContainer[3]
+
         m = QMessageBox()
         m.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
-        q = m.question(self, "Clear the streamer list?", "Are you sure you want to clear the streamer list?", m.Yes | m.No)
+        q = m.question(self, "Clear the "+platform+" channel list?", "Are you sure you want to clear the "+platform+" channel list?", m.Yes | m.No)
 
         if q == m.Yes:
-            for i in range(self.container.count()):
-                self.container.itemAt(i).widget().deleteLater()
-            DATA["channelList"] = []
-            self.updateChannels()
+            for i in range(widget.count()):
+                widget.itemAt(i).widget().deleteLater()
+            DATA[data] = []
+            self.updateChannels(data)
 
-    def updateChannels(self):
-        self.completer.setModel(QStringListModel(DATA["channelList"]))
-        self.channelCount.setText(str(len(DATA["channelList"])))
-        main.saveData()
+    def updateChannels(self, dataList):
+        self.completer.setModel(QStringListModel(DATA[dataList]))
+        self.channelCount.setText(str(len(DATA[dataList])))
+        self.parent.saveData()
 
 
     def mouseReleaseEvent(self, e):
@@ -351,7 +393,7 @@ class StreamPreview(QWidget):
         self.centerWrap = QHBoxLayout()
         self.setLayout(self.centerWrap)
 
-        self.thread = TwitchThread(self)
+        self.thread = RequestThread(self, "")
         self.thread.start()
         self.thread.finished.connect(self.showPreview)
         self.setStyleSheet("background-color: rgba(0,0,0, 0.8)")
@@ -375,12 +417,13 @@ class StreamPreview(QWidget):
 
 
 class ProfileBlock(QWidget):
-    def __init__(self, login, channel, title, game, viewers):
+    def __init__(self, platform, stream, login, channel, title, game, viewers):
         super().__init__()
         self.setAttribute(Qt.WA_StyledBackground)
         self.setFixedSize(BLOCK_WIDTH, BLOCK_HEIGHT)
         self.login = login
-        self.mouseReleaseEvent = self.showPreview
+        self.stream = stream
+        self.mouseReleaseEvent = self.showPreview if platform == "twitch" else None
 
         wrap = QHBoxLayout()
         textWrap = QVBoxLayout()
@@ -391,7 +434,7 @@ class ProfileBlock(QWidget):
         img = QLabel()
         img.setFixedSize(BLOCK_HEIGHT, BLOCK_HEIGHT)
         img.setObjectName("img")
-        img.setPixmap(QPixmap("images/"+login+".png").scaled(BLOCK_HEIGHT, BLOCK_HEIGHT, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        img.setPixmap(QPixmap("images/"+platform+"/"+login+".png").scaled(BLOCK_HEIGHT, BLOCK_HEIGHT, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         img.mouseReleaseEvent = self.openInBrowser
         wrap.addWidget(img)
 
@@ -399,9 +442,11 @@ class ProfileBlock(QWidget):
         topText.addWidget(QLabel(channel))
         topText.addStretch(1)
 
-        viewers = QLabel(viewers)
-        viewers.setObjectName("viewers")
-        topText.addWidget(viewers)
+        if viewers != "-1":
+            viewers = QLabel(viewers)
+            viewers.setObjectName("viewers")
+            topText.addWidget(viewers)
+
         textWrap.addLayout(topText)
 
         if game:
@@ -437,7 +482,7 @@ class ProfileBlock(QWidget):
         try:
             w = app.widgetAt(e.globalPos())
             if w.parent() == self or w == self:
-                QDesktopServices.openUrl(QUrl("https://twitch.tv/"+self.login+""))
+                QDesktopServices.openUrl(QUrl(self.stream))
         except:
             pass
 
@@ -452,27 +497,35 @@ class ProfileBlock(QWidget):
 class Dashboard(QWidget):
     def __init__(self):
         super().__init__()
-        global progress
+        global twitchCount, youtubeCount
         self.setFixedHeight(int(BTN_SIZE * 1.5))
         self.setAttribute(Qt.WA_StyledBackground)
 
         buttonWrap = QHBoxLayout()
-        buttonWrap.setContentsMargins(0,0,5,0)
+        buttonWrap.setContentsMargins(5,0,5,0)
         buttonWrap.setSpacing(5)
-        buttonWrap.addStretch(1)
 
+
+        self.switchTwitch = QPushButton("\uE007")
+        self.switchYoutube = QPushButton("\uE008")
+        for i in [twitchCount := QLabel(""), youtubeCount := QLabel("")]:
+            i.setObjectName("count")
         self.managerBtn = QPushButton("\uE001")
-        progress = QLabel()
-        progress.setObjectName("count")
-        btns = [progress, QPushButton("\uE000"), self.managerBtn, QPushButton("\uE002")]
-        for i in btns:
-            buttonWrap.addWidget(i)
-            if i is not progress:
-                i.setObjectName("icon")
 
-        btns[1].clicked.connect(lambda: main.refreshBlocks())
+        btns = [self.switchTwitch, self.switchYoutube, twitchCount, youtubeCount, QPushButton("\uE000"), self.managerBtn, QPushButton("\uE002")]
+        for i in btns:
+            if i == twitchCount:
+                buttonWrap.addStretch(1)
+            if i not in [twitchCount, youtubeCount]:
+                i.setObjectName("icon")
+            buttonWrap.addWidget(i)
+
+        btns[4].clicked.connect(lambda: main.refreshBlocks(""))
         self.managerBtn.mouseReleaseEvent = self.showManager
-        btns[3].clicked.connect(self.sort)
+        btns[6].clicked.connect(self.sort)
+
+        self.switchTwitch.clicked.connect(lambda: main.stackLayout.setCurrentIndex(0))
+        self.switchYoutube.clicked.connect(lambda: main.stackLayout.setCurrentIndex(1))
 
         self.setLayout(buttonWrap)
         self.updateStylesheet()
@@ -481,17 +534,11 @@ class Dashboard(QWidget):
         self.setStyleSheet("QWidget{background-color: "+BACKGROUND_COLOR+";}QPushButton#icon{background-color: "+BLOCK_COLOR+";}")
 
 
-    def refresh(self, e):
-        main.reversed = False
-        main.thread.start()
-
-    def sort(self):
+    def sort(self, e):
+        main.reversed = True if not main.reversed else False
         main.sortBlocks()
-        main.generateBlocks()
-
-    def clearLayout(self):
-        for i in range(main.profileGrid.count()):
-            main.profileGrid.itemAt(i).widget().deleteLater()
+        main.generateTwitchBlocks()
+        main.generateYoutubeBlocks()
 
     def showManager(self, e):
         if app.widgetAt(e.globalPos()) == self.managerBtn:
@@ -511,15 +558,21 @@ class Dashboard(QWidget):
 
 
 
-class TwitchThread(QThread):
-    def __init__(self, parent):
+class RequestThread(QThread):
+    def __init__(self, parent, platform):
         super().__init__()
         self.parent = parent
+        self.platform = platform
 
     def run(self):
         try:
             if not hasattr(self.parent, "login"):
-                twitch.getData(DATA["channelList"], progress)
+                if self.platform == "twitch":
+                    twitch.getData(DATA["twitchList"], twitchCount)
+                    twitchCount.setText("")
+                else:
+                    youtube.getData(DATA["youtubeList"], youtubeCount)
+                    youtubeCount.setText("")
             else:
                 with open(self.parent.path, "wb") as f:
                     f.write(requests.get("https://static-cdn.jtvnw.net/previews-ttv/live_user_"+self.parent.login+"-854x480.jpg").content)
@@ -527,7 +580,6 @@ class TwitchThread(QThread):
             pass
         if not hasattr(self.parent, "login"):
             self.parent.sortBlocks()
-            progress.setText("")
 
 
 
@@ -535,9 +587,11 @@ class TwitchThread(QThread):
 class Main(QWidget): 
     def __init__(self):
         super().__init__()
-        global twitch
+        global twitch, youtube
         twitch = TwitchData()
-        self.reversed = False
+        youtube = YoutubeData()
+
+        self.reversed = True
         QFontDatabase().addApplicationFont("resource/Outfit-Regular.ttf")
         QFontDatabase().addApplicationFont("resource/lbicons.ttf")
 
@@ -548,36 +602,34 @@ class Main(QWidget):
             i.setContentsMargins(0,0,0,0)
 
 
-        scrollArea = QWidget()
-        self.profileGrid = FlowLayout(False)
-        scrollArea.setLayout(self.profileGrid)
-        scrollArea.setObjectName("main")
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setWidget(scrollArea)
-
+        self.stackLayout = QStackedWidget()
+        self.initiateLayouts()
         base.addWidget(Dashboard())
-        base.addWidget(scroll)
+        base.addWidget(self.stackLayout)
 
 
         self.wrapGrid.addLayout(base, 0, 0)
-        self.manager = ChannelManager()
+        self.manager = ChannelManager(self)
         self.wrapGrid.addWidget(self.manager, 0, 0)
         self.setLayout(self.wrapGrid)
         self.updateStylesheet()
         self.setWindowGeometry()
 
 
-        self.thread = TwitchThread(self)
-        self.thread.start()
-        self.thread.finished.connect(self.generateBlocks)
-        # self.generateBlocks()
-        QShortcut(QKeySequence("Ctrl+R"), self).activated.connect(self.refreshBlocks)
+        self.twitchThread = RequestThread(self, "twitch")
+        self.twitchThread.start()
+        self.twitchThread.finished.connect(self.generateTwitchBlocks)
+
+        self.youtubeThread = RequestThread(self, "youtube")
+        self.youtubeThread.start()
+        self.youtubeThread.finished.connect(self.generateYoutubeBlocks)
+
+        QShortcut(QKeySequence("Ctrl+Shift+R"), self).activated.connect(lambda: self.refreshBlocks(""))
+        QShortcut(QKeySequence("Ctrl+Tab"), self).activated.connect(lambda: self.switchLayout("forward"))
+        QShortcut(QKeySequence("Ctrl+Shift+Tab"), self).activated.connect(lambda: self.switchLayout(""))
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+FONT_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border-radius: 3px; background-color: "+BLOCK_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+FONT_DARKER+"}QLabel#label, QLabel#count{margin-left: 5px; font-size: "+str(FONT_SIZE)+"px; font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+";}QLabel#count{font-size: "+str(FONT_SIZE - 2)+"px; margin-right: 3px;}")
+        self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+FONT_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border-radius: 3px; background-color: "+BLOCK_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+FONT_DARKER+"}QLabel#label, QLabel#count{font-size: "+str(FONT_SIZE)+"px; font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+";}QLabel#count{font-size: "+str(FONT_SIZE - 2)+"px;}")
 
     def setWindowGeometry(self):
         try:
@@ -586,20 +638,71 @@ class Main(QWidget):
              self.resize(self.screen().availableGeometry().size() / 2)
 
 
-    def refreshBlocks(self):
-        self.reversed = False
-        self.thread.start()
+    def initiateLayouts(self):
+        self.twitchGrid = FlowLayout(False)
+        self.youtubeGrid = FlowLayout(False)
+
+        for i in [self.twitchGrid, self.youtubeGrid]:
+            self.stackLayout.addWidget(self.platformLayout(i))
+
+    def platformLayout(self, grid):
+        scrollArea = QWidget()
+        scrollArea.setLayout(grid)
+        scrollArea.setObjectName("main")
+        QShortcut(QKeySequence("Ctrl+R"), scrollArea).activated.connect(lambda: self.refreshBlocks(grid))
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(scrollArea)
+        return scroll
+
+
+    def refreshBlocks(self, grid):
+        match grid:
+            case self.twitchGrid:
+                self.twitchThread.start()
+            case self.youtubeGrid:
+                self.youtubeThread.start()
+            case "":
+                self.twitchThread.start()
+                self.youtubeThread.start()
 
     def sortBlocks(self):
-        self.reversed = True if not self.reversed else False
-        twitch.liveChannels.sort(key = lambda x:x["viewers"], reverse = self.reversed)
+        for i in [twitch.liveChannels, youtube.liveChannels]:
+            i.sort(key = lambda x:x["viewers"], reverse = self.reversed)
 
-    def generateBlocks(self):
-        for i in range(self.profileGrid.count()):
-            self.profileGrid.itemAt(i).widget().deleteLater()
 
-        for i in twitch.liveChannels:
-            self.profileGrid.addWidget(ProfileBlock(i["login"], i["channel"], i["title"], i["game"], str(format(i["viewers"], ",d").replace(",", "."))))
+    def generateTwitchBlocks(self):
+        self.generateBlocks(self.twitchGrid, twitch.liveChannels)
+
+    def generateYoutubeBlocks(self):
+        self.generateBlocks(self.youtubeGrid, youtube.liveChannels)
+
+    def generateBlocks(self, grid, platform):
+        for i in range(grid.count()):
+            grid.itemAt(i).widget().deleteLater()
+
+        for i in platform:
+            grid.addWidget(ProfileBlock(i["platform"], i["stream"], i["login"], i["channel"], i["title"], i["game"], str(format(i["viewers"], ",d").replace(",", "."))))
+        grid.update()
+
+
+    def switchLayout(self, way):
+        total = self.stackLayout.count() - 1
+        current = self.stackLayout.currentIndex()
+        if way == "forward":
+            if current == total:
+                self.stackLayout.setCurrentIndex(0)
+            else:
+                self.stackLayout.setCurrentIndex(current + 1)
+        else:
+            if current == 0:
+                self.stackLayout.setCurrentIndex(total)
+            else:
+                self.stackLayout.setCurrentIndex(current - 1)
+
+
 
 
     def saveData(self):
