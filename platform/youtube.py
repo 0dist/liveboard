@@ -9,19 +9,22 @@ class YoutubeData():
     def requestData(self, url, login):
         r = requests.get(url).text
 
-        name = re.search("link itemprop=\"name\" content=\"(.*?)\"></", r).group(1)
-        image = re.search("url\":\"(https://yt3.{1,150})=s", r).group(1).replace("ggpht", "googleusercontent") + "=s100"
-        #"livedvr" often is only present with 1 livestream, which will filter out recommendations. A channel with more than 1 livestream has no recommendations, then we should get live ids with "hqdefault_live", as it is "hqdefault" in past livestreams
-        oneStream = re.search("isLiveDvrEnabled.*/vi/([A-Za-z0-9_\-]{11})(/hqdefault_live|.{1,1000}playerAnnotations)", r)
-        manyStreamsAuthor = set(re.findall("/vi/([A-Za-z0-9_\-]{11})/hqdefault_live.{1,2000}author\":\""+name+"", r))
-        manyStreamsThumb = set(re.findall("/vi/([A-Za-z0-9_\-]{11})/hqdefault_live", r))
+        try:
+            name = re.search("link itemprop=\"name\" content=\"(.*?)\">", r).group(1)
+            image = re.search("url\":\"(https://yt3.{1,150})=s", r).group(1).replace("ggpht", "googleusercontent") + "=s100"
+            #"livedvr" often is only present with 1 livestream, which will filter out recommendations. A channel with more than 1 livestream has no recommendations, then we should get live ids with "hqdefault_live", as it is "hqdefault" in past livestreams
+            oneStream = re.search("isLiveDvrEnabled.*/vi/([A-Za-z0-9_\-]{11})(/hqdefault_live|.{1,1000}playerAnnotations)", r)
+            oneStreamAuthor = re.search("/vi/([A-Za-z0-9_\-]{11})/hqdefault_live.{1,2000}author\":\""+name+"", r)
+            manyStreamsThumb = set(re.findall("/vi/([A-Za-z0-9_\-]{11})/hqdefault_live", r))
 
-        if oneStream:
-            videoId = [oneStream.group(1)]
-        elif manyStreamsAuthor:
-            videoId = manyStreamsAuthor
-        else:
-            videoId = manyStreamsThumb
+            if oneStream:
+                videoId = [oneStream.group(1)]
+            elif oneStreamAuthor:
+                videoId = [oneStreamAuthor.group(1)]
+            else:
+                videoId = manyStreamsThumb
+        except:
+            videoId = []
 
         data = []
         for i in videoId:
@@ -37,6 +40,8 @@ class YoutubeData():
             futures = [executor.submit(self.requestData, "https://www.youtube.com/@"+channel+"/live", channel) for channel in channels]
 
             for n, future in enumerate(concurrent.futures.as_completed(futures)):
+                if n == 1:
+                    count.show()
                 count.setText("Youtube - " + str(n + 1) + " / " + str(len(channels)))
 
                 for data in future.result():

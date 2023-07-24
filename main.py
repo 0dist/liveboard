@@ -1,10 +1,10 @@
 
-from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QHBoxLayout, QLineEdit, QShortcut, QScrollArea, QLayout, QMessageBox, QToolTip, QCompleter, QGraphicsDropShadowEffect, QTreeView, QShortcut, QStackedWidget
-from PyQt5.QtCore import Qt, QSize, QRect, QUrl, QThread, QByteArray, QStringListModel, QEvent
-from PyQt5.QtGui import QKeyEvent, QKeySequence, QColor, QFontDatabase, QSyntaxHighlighter, QIcon, QPixmap, QDesktopServices, QKeySequence
+from PyQt5.QtWidgets import QLabel, QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QHBoxLayout, QLineEdit, QShortcut, QScrollArea, QLayout, QMessageBox, QToolTip, QCompleter, QGraphicsDropShadowEffect, QTreeView, QShortcut, QStackedWidget, QSplitter
+from PyQt5.QtCore import Qt, QSize, QRect, QUrl, QThread, QByteArray, QStringListModel
+from PyQt5.QtGui import QColor, QFontDatabase, QIcon, QPixmap, QDesktopServices, QKeySequence
 
 import sys, ctypes, json, time, threading, requests, os
-# sys.path.append("./platform")
+sys.path.append("./platform")
 from twitch import TwitchData
 from youtube import YoutubeData
 
@@ -166,7 +166,7 @@ class ChannelManager(QWidget):
         self.stackLayout = QStackedWidget()
         self.initiateLayouts()
         # set label data
-        self.switchTwitch()
+        self.switchLayout(0)
         centerLayout.addLayout(topRow)
         centerLayout.addWidget(self.stackLayout)
 
@@ -200,6 +200,10 @@ class ChannelManager(QWidget):
         scroll.setWidget(scrollArea)
         return scroll
 
+
+    def switchLayout(self, index):
+        s = [self.switchTwitch, self.switchYoutube]
+        s[index]()
 
     def switchTwitch(self):
         self.activeContainer = self.twitchContainer
@@ -508,7 +512,7 @@ class Dashboard(QWidget):
 
         self.switchTwitch = QPushButton("\uE007")
         self.switchYoutube = QPushButton("\uE008")
-        for i in [twitchCount := QLabel(""), youtubeCount := QLabel("")]:
+        for i in [twitchCount := QLabel(), youtubeCount := QLabel()]:
             i.setObjectName("count")
         self.managerBtn = QPushButton("\uE001")
 
@@ -544,6 +548,7 @@ class Dashboard(QWidget):
         if app.widgetAt(e.globalPos()) == self.managerBtn:
             self.managerBtn.clearFocus()
             main.manager.show()
+            main.manager.switchLayout(main.stackLayout.currentIndex())
 
 
 
@@ -569,10 +574,10 @@ class RequestThread(QThread):
             if not hasattr(self.parent, "login"):
                 if self.platform == "twitch":
                     twitch.getData(DATA["twitchList"], twitchCount)
-                    twitchCount.setText("")
+                    self.clearCount(twitchCount)
                 else:
                     youtube.getData(DATA["youtubeList"], youtubeCount)
-                    youtubeCount.setText("")
+                    self.clearCount(youtubeCount)
             else:
                 with open(self.parent.path, "wb") as f:
                     f.write(requests.get("https://static-cdn.jtvnw.net/previews-ttv/live_user_"+self.parent.login+"-854x480.jpg").content)
@@ -580,6 +585,11 @@ class RequestThread(QThread):
             pass
         if not hasattr(self.parent, "login"):
             self.parent.sortBlocks()
+
+    def clearCount(self, count):
+        count.hide()
+        count.clear()
+
 
 
 
@@ -627,6 +637,7 @@ class Main(QWidget):
         QShortcut(QKeySequence("Ctrl+Shift+R"), self).activated.connect(lambda: self.refreshBlocks(""))
         QShortcut(QKeySequence("Ctrl+Tab"), self).activated.connect(lambda: self.switchLayout("forward"))
         QShortcut(QKeySequence("Ctrl+Shift+Tab"), self).activated.connect(lambda: self.switchLayout(""))
+        QShortcut(QKeySequence("Esc"), self).activated.connect(lambda: self.manager.hide())
 
     def updateStylesheet(self):
         self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+FONT_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border-radius: 3px; background-color: "+BLOCK_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+FONT_DARKER+"}QLabel#label, QLabel#count{font-size: "+str(FONT_SIZE)+"px; font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+";}QLabel#count{font-size: "+str(FONT_SIZE - 2)+"px;}")

@@ -19,6 +19,8 @@ class TwitchData():
             futures = [executor.submit(self.requestData, data) for data in dataList]
 
             for n, future in enumerate(concurrent.futures.as_completed(futures)):
+                if n == 1:
+                    count.show()
                 count.setText("Twitch - " + str(n + 1) + " / " + str(len(channels)))
                 r = future.result().text
 
