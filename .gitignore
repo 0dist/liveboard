@@ -4,3 +4,4 @@ main.build
 main.dist
 src
 data.json
+kick.py

@@ -50,7 +50,3 @@ class TwitchData():
                 f.write(requests.get(re.search('profileImageURL":"(.*?)","', r).group(1)).content)
         except:
             pass
-
-
-
-

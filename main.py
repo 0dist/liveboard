@@ -509,14 +509,16 @@ class Dashboard(QWidget):
         buttonWrap.setContentsMargins(5,0,5,0)
         buttonWrap.setSpacing(5)
 
-
+        self.switchLayoutBtn = QPushButton("\uE009")
+        self.switchLayoutBtn.setStyleSheet("margin-right: 10px;")
         self.switchTwitch = QPushButton("\uE007")
         self.switchYoutube = QPushButton("\uE008")
         for i in [twitchCount := QLabel(), youtubeCount := QLabel()]:
             i.setObjectName("count")
         self.managerBtn = QPushButton("\uE001")
+        self.managerBtn.setStyleSheet("margin-left: 10px;")
 
-        btns = [self.switchTwitch, self.switchYoutube, twitchCount, youtubeCount, QPushButton("\uE000"), self.managerBtn, QPushButton("\uE002")]
+        btns = [self.switchLayoutBtn, self.switchTwitch, self.switchYoutube, twitchCount, youtubeCount, QPushButton("\uE000"), QPushButton("\uE002"), self.managerBtn]
         for i in btns:
             if i == twitchCount:
                 buttonWrap.addStretch(1)
@@ -524,12 +526,14 @@ class Dashboard(QWidget):
                 i.setObjectName("icon")
             buttonWrap.addWidget(i)
 
-        btns[4].clicked.connect(lambda: main.refreshBlocks(""))
+
+        btns[5].clicked.connect(lambda: main.refreshBlocks(""))
         self.managerBtn.mouseReleaseEvent = self.showManager
         btns[6].clicked.connect(self.sort)
 
-        self.switchTwitch.clicked.connect(lambda: main.stackLayout.setCurrentIndex(0))
-        self.switchYoutube.clicked.connect(lambda: main.stackLayout.setCurrentIndex(1))
+        self.switchTwitch.clicked.connect(lambda: main.switchStackLayout(0))
+        self.switchYoutube.clicked.connect(lambda: main.switchStackLayout(1))
+        self.switchLayoutBtn.clicked.connect(lambda: main.switchLayout())
 
         self.setLayout(buttonWrap)
         self.updateStylesheet()
@@ -547,6 +551,7 @@ class Dashboard(QWidget):
     def showManager(self, e):
         if app.widgetAt(e.globalPos()) == self.managerBtn:
             self.managerBtn.clearFocus()
+            main.manager.raise_()
             main.manager.show()
             main.manager.switchLayout(main.stackLayout.currentIndex())
 
@@ -606,22 +611,39 @@ class Main(QWidget):
         QFontDatabase().addApplicationFont("resource/lbicons.ttf")
 
         self.wrapGrid = QGridLayout()
-        base = QVBoxLayout()
-        base.setSpacing(0)
-        for i in [self.wrapGrid, base]:
+        self.mainWindow = QVBoxLayout()
+        self.mainWindow.setSpacing(0)
+        for i in [self.wrapGrid, self.mainWindow]:
             i.setContentsMargins(0,0,0,0)
 
 
         self.stackLayout = QStackedWidget()
-        self.initiateLayouts()
-        base.addWidget(Dashboard())
-        base.addWidget(self.stackLayout)
+        self.splitLayout = QSplitter()
+        self.splitLayout.setChildrenCollapsible(False)
+        self.splitLayout.setHandleWidth(5)
+        self.splitLayout.splitterMoved.connect(lambda: self.splitterMove())
+
+        try:
+            DATA["layout"]
+        except:
+            DATA["layout"] = "stack"
+        self.activeLayout = self.stackLayout if DATA["layout"] == "stack" else self.splitLayout
+
+        self.twitchGrid = FlowLayout(False)
+        self.youtubeGrid = FlowLayout(False)
+        self.populateLayout()
+        self.mainWindow.addWidget(Dashboard())
+        self.mainWindow.addWidget(self.activeLayout)
+        # restore previous state
+        self.setSpliterGeometry()
+        self.switchStackLayout(None)
 
 
-        self.wrapGrid.addLayout(base, 0, 0)
+        self.wrapGrid.addLayout(self.mainWindow, 0, 0)
         self.manager = ChannelManager(self)
         self.wrapGrid.addWidget(self.manager, 0, 0)
         self.setLayout(self.wrapGrid)
+
         self.updateStylesheet()
         self.setWindowGeometry()
 
@@ -634,13 +656,13 @@ class Main(QWidget):
         self.youtubeThread.start()
         self.youtubeThread.finished.connect(self.generateYoutubeBlocks)
 
-        QShortcut(QKeySequence("Ctrl+Shift+R"), self).activated.connect(lambda: self.refreshBlocks(""))
-        QShortcut(QKeySequence("Ctrl+Tab"), self).activated.connect(lambda: self.switchLayout("forward"))
-        QShortcut(QKeySequence("Ctrl+Shift+Tab"), self).activated.connect(lambda: self.switchLayout(""))
+        QShortcut(QKeySequence("Ctrl+Shift+R"), self).activated.connect(lambda: self.refreshBlocks("back"))
+        QShortcut(QKeySequence("Ctrl+Tab"), self).activated.connect(lambda: self.switchStackLayout("forward"))
+        QShortcut(QKeySequence("Ctrl+Shift+Tab"), self).activated.connect(lambda: self.switchStackLayout(""))
         QShortcut(QKeySequence("Esc"), self).activated.connect(lambda: self.manager.hide())
 
     def updateStylesheet(self):
-        self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+FONT_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border-radius: 3px; background-color: "+BLOCK_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+FONT_DARKER+"}QLabel#label, QLabel#count{font-size: "+str(FONT_SIZE)+"px; font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+";}QLabel#count{font-size: "+str(FONT_SIZE - 2)+"px;}")
+        self.setStyleSheet("QWidget#main{background-color: "+BACKGROUND_COLOR+";}QScrollArea{border: none;}QScrollBar:vertical{margin: 0; width: 7px; border: none;}QScrollBar::handle:vertical{background-color: "+BLOCK_COLOR+"; min-height: 30px;}QScrollBar:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:vertical{background-color: "+BACKGROUND_COLOR+";}QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical{height: 0; background-color: none;}QPushButton#icon{font-family: lbicons; color: "+FONT_COLOR+"; font-size: "+str(ICON_SIZE)+"px; border-radius: 3px; background-color: "+BLOCK_COLOR+"; width: "+str(BTN_SIZE)+"px; height: "+str(BTN_SIZE)+"px;}QPushButton#icon:pressed{color: "+FONT_DARKER+"}QLabel#label, QLabel#count{font-size: "+str(FONT_SIZE)+"px; font-family: "+FONT_FAMILY+"; color: "+FONT_COLOR+";}QLabel#count{font-size: "+str(FONT_SIZE - 2)+"px;}QSplitter::handle{background-color: "+BLOCK_COLOR+";}")
 
     def setWindowGeometry(self):
         try:
@@ -648,13 +670,57 @@ class Main(QWidget):
         except:
              self.resize(self.screen().availableGeometry().size() / 2)
 
+    def setSpliterGeometry(self):
+        try:
+            self.splitLayout.restoreState(QByteArray.fromBase64(DATA["splitGeometry"].encode()))
+        except:
+            pass
 
-    def initiateLayouts(self):
-        self.twitchGrid = FlowLayout(False)
-        self.youtubeGrid = FlowLayout(False)
 
+    def switchStackLayout(self, way):
+        if self.activeLayout == self.stackLayout:
+            if isinstance(way, str):
+                total = self.activeLayout.count() - 1
+                current = self.activeLayout.currentIndex()
+                if way == "forward":
+                    if current == total:
+                        self.activeLayout.setCurrentIndex(0)
+                    else:
+                        self.activeLayout.setCurrentIndex(current + 1)
+                else:
+                    if current == 0:
+                        self.activeLayout.setCurrentIndex(total)
+                    else:
+                        self.activeLayout.setCurrentIndex(current - 1)
+            elif isinstance(way, int):
+                self.activeLayout.setCurrentIndex(way)
+            else:
+                try:
+                    self.activeLayout.setCurrentIndex(DATA["activeTab"])
+                except:
+                    pass
+            DATA["activeTab"] = self.activeLayout.currentIndex()
+
+
+    def switchLayout(self):
+        self.activeLayout.setParent(None)
+
+        for i in self.activeLayout.children():
+            if type(i) == QScrollArea:
+                i.deleteLater()
+
+        self.activeLayout = self.stackLayout if self.activeLayout == self.splitLayout else self.splitLayout
+
+        self.populateLayout()
+        self.mainWindow.addWidget(self.activeLayout)
+        self.switchStackLayout(None) if self.activeLayout == self.stackLayout else self.setSpliterGeometry()
+
+        DATA["layout"] = "split" if DATA["layout"] == "stack" else "stack"
+
+
+    def populateLayout(self):
         for i in [self.twitchGrid, self.youtubeGrid]:
-            self.stackLayout.addWidget(self.platformLayout(i))
+            self.activeLayout.addWidget(self.platformLayout(i))
 
     def platformLayout(self, grid):
         scrollArea = QWidget()
@@ -664,6 +730,7 @@ class Main(QWidget):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setMinimumWidth(BLOCK_WIDTH)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setWidget(scrollArea)
         return scroll
@@ -699,21 +766,8 @@ class Main(QWidget):
         grid.update()
 
 
-    def switchLayout(self, way):
-        total = self.stackLayout.count() - 1
-        current = self.stackLayout.currentIndex()
-        if way == "forward":
-            if current == total:
-                self.stackLayout.setCurrentIndex(0)
-            else:
-                self.stackLayout.setCurrentIndex(current + 1)
-        else:
-            if current == 0:
-                self.stackLayout.setCurrentIndex(total)
-            else:
-                self.stackLayout.setCurrentIndex(current - 1)
-
-
+    def splitterMove(self):
+        DATA["splitGeometry"] = bytearray(self.splitLayout.saveState().toBase64()).decode("utf-8")
 
 
     def saveData(self):
