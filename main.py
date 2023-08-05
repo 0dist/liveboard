@@ -123,6 +123,7 @@ class ChannelManager(QWidget):
         self.parent = parent
 
         centerWrap = QHBoxLayout()
+        centerWrap.setContentsMargins(0,0,0,0)
         centerWid = QWidget()
         centerWid.setObjectName("center")
         centerWid.setFixedSize(500, 350)
@@ -130,9 +131,10 @@ class ChannelManager(QWidget):
 
         centerLayout = QVBoxLayout()
         centerLayout.setSpacing(0)
-        centerLayout.setContentsMargins(12,12,12,12)
+        m = 12
+        centerLayout.setContentsMargins(m,m,m,m)
         topRow = QHBoxLayout()
-        topRow.setContentsMargins(0,0,0,12)
+        topRow.setContentsMargins(0,0,0,m)
         topRow.setSpacing(6)
 
 
@@ -165,8 +167,6 @@ class ChannelManager(QWidget):
 
         self.stackLayout = QStackedWidget()
         self.initiateLayouts()
-        # set label data
-        self.switchLayout(0)
         centerLayout.addLayout(topRow)
         centerLayout.addWidget(self.stackLayout)
 
@@ -201,7 +201,7 @@ class ChannelManager(QWidget):
         return scroll
 
 
-    def switchLayout(self, index):
+    def switchManagerLayout(self, index):
         s = [self.switchTwitch, self.switchYoutube]
         s[index]()
 
@@ -506,19 +506,21 @@ class Dashboard(QWidget):
         self.setAttribute(Qt.WA_StyledBackground)
 
         buttonWrap = QHBoxLayout()
-        buttonWrap.setContentsMargins(5,0,5,0)
-        buttonWrap.setSpacing(5)
+        m = 5
+        buttonWrap.setContentsMargins(m,0,m,0)
+        buttonWrap.setSpacing(m)
 
-        self.switchLayoutBtn = QPushButton("\uE009")
-        self.switchLayoutBtn.setStyleSheet("margin-right: 10px;")
-        self.switchTwitch = QPushButton("\uE007")
-        self.switchYoutube = QPushButton("\uE008")
+        switchLayoutBtn = QPushButton("\uE009")
+        switchLayoutBtn.setStyleSheet("margin-right: 10px;")
+        switchTwitchBtn = QPushButton("\uE007")
+        switchYoutubeBtn = QPushButton("\uE008")
         for i in [twitchCount := QLabel(), youtubeCount := QLabel()]:
             i.setObjectName("count")
         self.managerBtn = QPushButton("\uE001")
         self.managerBtn.setStyleSheet("margin-left: 10px;")
 
-        btns = [self.switchLayoutBtn, self.switchTwitch, self.switchYoutube, twitchCount, youtubeCount, QPushButton("\uE000"), QPushButton("\uE002"), self.managerBtn]
+
+        btns = [switchLayoutBtn, switchTwitchBtn, switchYoutubeBtn, twitchCount, youtubeCount, QPushButton("\uE000"), QPushButton("\uE002"), self.managerBtn]
         for i in btns:
             if i == twitchCount:
                 buttonWrap.addStretch(1)
@@ -531,9 +533,9 @@ class Dashboard(QWidget):
         self.managerBtn.mouseReleaseEvent = self.showManager
         btns[6].clicked.connect(self.sort)
 
-        self.switchTwitch.clicked.connect(lambda: main.switchStackLayout(0))
-        self.switchYoutube.clicked.connect(lambda: main.switchStackLayout(1))
-        self.switchLayoutBtn.clicked.connect(lambda: main.switchLayout())
+        switchTwitchBtn.clicked.connect(lambda: main.switchStackLayout(0))
+        switchYoutubeBtn.clicked.connect(lambda: main.switchStackLayout(1))
+        switchLayoutBtn.clicked.connect(lambda: main.switchLayout())
 
         self.setLayout(buttonWrap)
         self.updateStylesheet()
@@ -553,7 +555,7 @@ class Dashboard(QWidget):
             self.managerBtn.clearFocus()
             main.manager.raise_()
             main.manager.show()
-            main.manager.switchLayout(main.stackLayout.currentIndex())
+            main.manager.switchManagerLayout(main.stackLayout.currentIndex())
 
 
 
@@ -629,8 +631,7 @@ class Main(QWidget):
             DATA["layout"] = "stack"
         self.activeLayout = self.stackLayout if DATA["layout"] == "stack" else self.splitLayout
 
-        self.twitchGrid = FlowLayout(False)
-        self.youtubeGrid = FlowLayout(False)
+
         self.populateLayout()
         self.mainWindow.addWidget(Dashboard())
         self.mainWindow.addWidget(self.activeLayout)
@@ -649,15 +650,15 @@ class Main(QWidget):
 
 
         self.twitchThread = RequestThread(self, "twitch")
-        self.twitchThread.start()
-        self.twitchThread.finished.connect(self.generateTwitchBlocks)
-
         self.youtubeThread = RequestThread(self, "youtube")
-        self.youtubeThread.start()
-        self.youtubeThread.finished.connect(self.generateYoutubeBlocks)
+        for t, b in [(self.twitchThread, self.generateTwitchBlocks), (self.youtubeThread, self.generateYoutubeBlocks)]:
+            t.start()
+            t.finished.connect(b)
 
-        QShortcut(QKeySequence("Ctrl+Shift+R"), self).activated.connect(lambda: self.refreshBlocks("back"))
-        QShortcut(QKeySequence("Ctrl+Tab"), self).activated.connect(lambda: self.switchStackLayout("forward"))
+
+
+        QShortcut(QKeySequence("Ctrl+Shift+R"), self).activated.connect(lambda: self.refreshBlocks(""))
+        QShortcut(QKeySequence("Ctrl+Tab"), self).activated.connect(lambda: self.switchStackLayout(""))
         QShortcut(QKeySequence("Ctrl+Shift+Tab"), self).activated.connect(lambda: self.switchStackLayout(""))
         QShortcut(QKeySequence("Esc"), self).activated.connect(lambda: self.manager.hide())
 
@@ -677,23 +678,12 @@ class Main(QWidget):
             pass
 
 
-    def switchStackLayout(self, way):
+    def switchStackLayout(self, tab):
         if self.activeLayout == self.stackLayout:
-            if isinstance(way, str):
-                total = self.activeLayout.count() - 1
-                current = self.activeLayout.currentIndex()
-                if way == "forward":
-                    if current == total:
-                        self.activeLayout.setCurrentIndex(0)
-                    else:
-                        self.activeLayout.setCurrentIndex(current + 1)
-                else:
-                    if current == 0:
-                        self.activeLayout.setCurrentIndex(total)
-                    else:
-                        self.activeLayout.setCurrentIndex(current - 1)
-            elif isinstance(way, int):
-                self.activeLayout.setCurrentIndex(way)
+            if isinstance(tab, str):
+                self.activeLayout.setCurrentIndex(0) if self.activeLayout.currentIndex() == 1 else self.activeLayout.setCurrentIndex(1)
+            elif isinstance(tab, int):
+                self.activeLayout.setCurrentIndex(tab)
             else:
                 try:
                     self.activeLayout.setCurrentIndex(DATA["activeTab"])
@@ -719,6 +709,10 @@ class Main(QWidget):
 
 
     def populateLayout(self):
+        if not hasattr(self, "twitchGrid"):
+            self.twitchGrid = FlowLayout(False)
+            self.youtubeGrid = FlowLayout(False)
+            
         for i in [self.twitchGrid, self.youtubeGrid]:
             self.activeLayout.addWidget(self.platformLayout(i))
 
