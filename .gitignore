@@ -2,6 +2,7 @@ __pycache__
 images
 main.build
 main.dist
+dist
 src
 data.json
 kick.py
