@@ -28,10 +28,9 @@ class TwitchData():
                     login = re.search('login":"(.*?)",', r).group(1)
                     channel = re.search('Name":"(.*?)",', r).group(1)
                     viewers = int(re.search('viewersCount":(\d*)', r).group(1))
-                    title = re.search('title":"(.*?)","', r).group(1)
+                    title = re.search('title":"(.*?)","', r).group(1).encode("ascii", "namereplace").decode("unicode_escape")
                     game = re.search('"name":"(.*?)",', r)
-                    game = game.group(1) if game else ""
-
+                    game = game.group(1).encode().decode("unicode_escape") if game else ""
 
                     self.liveChannels.append({"platform": "twitch", "stream": "https://twitch.tv/"+login+"", "login": login, "channel": channel, "title": title, "viewers": viewers, "game": game})
 
