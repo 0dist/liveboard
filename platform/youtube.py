@@ -25,6 +25,9 @@ class YoutubeData():
 
     def getData(self, channels, count):
         self.liveChannels = []
+        if not os.path.exists("images/youtube"):
+            os.makedirs("images/youtube")
+
 
         with concurrent.futures.ThreadPoolExecutor(max_workers = 20) as executor:
             futures = [executor.submit(self.requestData, "https://www.youtube.com/@"+channel+"/streams", channel) for channel in channels]
@@ -46,8 +49,6 @@ class YoutubeData():
                         self.liveChannels.append({"platform": "youtube", "stream": "https://www.youtube.com/watch?v="+data[4]+"", "login": login, "channel": data[2], "title": title, "viewers": viewers, "game": ""})
 
 
-                        if not os.path.exists("images/youtube"):
-                            os.makedirs("images/youtube")
                         if not os.path.exists("images/youtube/"+login+".png"):
                             self.getImage(login, data[3])
                         elif os.path.getsize("images/youtube/"+login+".png") == 0:

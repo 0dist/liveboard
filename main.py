@@ -201,9 +201,9 @@ class ChannelManager(QWidget):
         return scroll
 
 
-    def switchManagerLayout(self, index):
-        s = [self.switchTwitch, self.switchYoutube]
-        s[index]()
+    def switchManagerLayout(self):
+        index = self.stackLayout.currentIndex() if DATA["layout"] != "stack" else main.activeLayout.currentIndex()
+        [self.switchTwitch, self.switchYoutube][index]()
 
     def switchTwitch(self):
         self.activeContainer = self.twitchContainer
@@ -555,7 +555,7 @@ class Dashboard(QWidget):
             self.managerBtn.clearFocus()
             main.manager.raise_()
             main.manager.show()
-            main.manager.switchManagerLayout(main.stackLayout.currentIndex())
+            main.manager.switchManagerLayout()
 
 
 

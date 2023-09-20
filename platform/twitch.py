@@ -13,6 +13,9 @@ class TwitchData():
     def getData(self, channels, count):
         self.liveChannels = []
         dataList = ["""[{"operationName":"ChannelShell","variables":{"login":"""+f'"{channel}"'+"""},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"580ab410bcd0c1ad194224957ae2241e5d252b2c5173d8e0cce9d32d5bb14efe"}}}, {"operationName":"ComscoreStreamingQuery","variables":{"channel":"""+f'"{channel}"'+""","clipSlug":"","isClip":false,"isLive":true,"isVodOrCollection":false,"vodID":""},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"e1edae8122517d013405f237ffcc124515dc6ded82480a88daef69c83b53ac01"}}}]""" for channel in channels]
+        
+        if not os.path.exists("images/twitch"):
+            os.makedirs("images/twitch")
 
 
         with concurrent.futures.ThreadPoolExecutor(max_workers = 20) as executor:
@@ -35,8 +38,6 @@ class TwitchData():
                     self.liveChannels.append({"platform": "twitch", "stream": "https://twitch.tv/"+login+"", "login": login, "channel": channel, "title": title, "viewers": viewers, "game": game})
 
 
-                    if not os.path.exists("images/twitch"):
-                        os.makedirs("images/twitch")
                     if not os.path.exists("images/twitch/"+login+".png"):
                         self.getImage(r, login)
                     elif os.path.getsize("images/twitch/"+login+".png") == 0:
