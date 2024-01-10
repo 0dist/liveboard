@@ -788,7 +788,7 @@ class Main(QWidget):
 if __name__ == "__main__":
     app = QApplication([])
     app.setWindowIcon(QIcon("resource/logo.ico"))
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('app') if sys.platform == "win32" else None
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("liveboard") if sys.platform == "win32" else None
     main = Main()
     main.show()
     sys.exit(app.exec())
